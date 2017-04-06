@@ -6,6 +6,9 @@ $Id: TODO,v 1.1 1998/04/19 10:27:23 jauderho Exp jauderho $
   that by releasing this sooner than later, that I will be able to get it
   usable again.
 
+- Well, it seems that at least some people have been able to get this stuff
+  working so that's a good sign.
+
 - Documentation. I need to document most of this stuff. The code is pretty
   well commented but there needs to be documentation that describes what does 
   what.
@@ -21,7 +24,6 @@ $Id: TODO,v 1.1 1998/04/19 10:27:23 jauderho Exp jauderho $
 - Additional support for creating various kind of zone files such as secondary
   bind 8 format files. 
 
-- Redo the dennis.conf and the way it is read. Right now it sits in bin/ but
-  it should move to etc/ instead
-
 - Ability to set levels of paranoia for dnsVerify.
+
+- <Your suggestion/wishlist here>

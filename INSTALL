@@ -1,10 +1,21 @@
-$Id: INSTALL,v 1.1 1998/04/24 22:03:58 jauderho Exp jauderho $
+$Id: INSTALL,v 1.2 1998/05/03 09:18:30 jauderho Exp jauderho $
 
   (C) Copyright 1997-98 Jauder Ho <jauderho@carumba.com>
 
 INSTALLATION
 
-  There are example configs in examples/, do copy them over into etc/. I have
-  left empty files in etc/ indicating where things should go. 
+  First of all, untar it and copy the directory's entire contents to wherever
+  that you want to install it. I haven't had time to write an installation
+  script yet. Voluteers wanted.
 
-  To get started put an /etc/hosts file in etc/ and run dennis.
+  There are example configs in examples/, do copy them over into etc/. I have
+  left empty files in etc/ indicating where things should go. If you choose
+  to have the DNS master be BIND 4, please make a soft link from /etc/named.boot
+  to <path where you installed dennis>/etc/named.boot for it to work 
+  automatically. Else if you are using BIND 8, copy the file named named.conf
+  from the examples directory to the etc directory; edit it to suit you and
+  make the appropriate soft link from /etc/named.conf to the right place.
+
+  To get started put an /etc/hosts style file called hosts in etc/ and run
+  dennis.
+

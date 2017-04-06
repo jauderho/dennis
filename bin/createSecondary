@@ -3,10 +3,25 @@
 # createSecondary
 #
 # Create named.boot file for secondary DNS machines.
-# This is obviously in BIND 4 format.
+# This is in BIND 4 format.
+# Configuration options can be found in ../etc/dennis.conf
 #
-# $Id: createSecondary,v 1.6 1998/03/22 11:16:15 jauderho Exp jauderho $
+# $Id: createSecondary,v 1.8 1998/04/28 20:27:58 jauderho Exp jauderho $
 # (C) Copyright 1997,1998 Jauder Ho <jauderho@carumba.com>
+#
+#    This program is free software; you can redistribute it and/or modify it
+#    under the terms of the GNU General Public License as published by the Free
+#    Software Foundation; either version 2 of the License, or (at your option)
+#    any later version.
+#
+#    This program is distributed in the hope that it will be useful, but
+#    WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+#    or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+#    for more details.
+#
+#    You should have received a copy of the GNU General Public License along
+#    with this program; if not, write to the Free Software Foundation, Inc., 59
+#    Temple Place, Suite 330, Boston, MA 02111-1307, USA
 #
 # 051597 jauderho [created]
 # 052297 jauderho [mail named.boot to hostmaster if there are changes in zones]
@@ -22,6 +37,7 @@ my $zone;
 my $status;
 my $cmp = "/bin/cmp";
 my $mv = "/bin/mv -f";
+my @zonefiles;
 
 chomp($date);   # Chomp!
 
@@ -56,7 +72,7 @@ if (-f $fileNamedBoot) {
 }
 
 # Write to named.boot for secondary
-open(NB,"+>$fileNamedBoot") or die "Cannot open file $fileNamedBoot\n";
+open(NB,">$fileNamedBoot") or die "Cannot open file $fileNamedBoot\n";
 print  NB "\; named.boot for domain $domainName - secondary server\n",
 	  "directory\t$dnshome\n";
 printf NB "cache\t\t%-24s\t%-20s\n", ".", "db.cache";
@@ -66,10 +82,14 @@ printf NB "secondary\t%-24s\t%s   %s\n", $domainName, $serverIP,
 printf NB "secondary\t%-24s\t%s   %s\n", "10.in-addr.arpa", $serverIP, 
 	  "db.10";
 
-chdir("$dnshome/master") or die "Cannot change directory to $dnshome/master\n";
+# Use opendir and friends since a filehandle glob is now insecure
+opendir(RFDIR,"$dnshome/master")
+or die "Cannot open directory $dnshome/master\n";
+@zonefiles = grep !/^\.\.?$/, readdir(RFDIR);
+closedir(RFDIR);
 
 # Create the rest of the file
-for $zone (<*>) {
+for $zone (@zonefiles) {
 	my $reversezone;
 
 	next if ($zone =~ /$domainName/ 
@@ -91,14 +111,11 @@ if ($status =~ /differ/) {
 	my $slurp;
 
 	open(MAIL,"|$mailer -t");
-
 	print MAIL "To: $contactName\n",
 		   "From: dnsBuild\@$domainName\n",
 		   "Subject: New named.boot for secondary named servers\n\n";
-
 	print MAIL "The named.boot has been updated. Please get the latest ",
 		   "file via the network\n\n";
-
 	close(MAIL);
 
 	print "Mailing new secondary DNS named.boot to $contactName\n";

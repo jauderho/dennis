@@ -1,5 +1,15 @@
-$Id$
+$Id: CHANGES,v 1.1 1998/04/29 08:18:57 jauderho Exp jauderho $
 
-0.05alpha
+0.06alpha
 	This is pre alpha software and hence this is just a placeholder till
 	I get some time to clean all of this stuff up. 
+
+0.07alpha
+	Initial release of the software to the world. Hope at least some of 
+	this stuff works!
+
+0.08alpha
+	Changed the way dennis.conf is laid out. There's now an option to 
+	output either bind4 or bind8 zone files for both master and
+	secondaries. You can only choose to output bind4 or bind8 for the 
+	master but you can output to either or both for the secondaries.
