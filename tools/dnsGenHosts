@@ -1,0 +1,97 @@
+#!/usr/bin/perl -Tw
+#
+# dnsGenHosts
+#
+# Autogenerates a /etc/hosts style table suitable for use with dennis.
+# To be mainly used as a transition tool. For example moving from a current
+# DNS system to a dennis based version.
+#
+# $Id: dnsGenHosts,v 1.2 1998/09/04 21:04:53 jauderho Exp jauderho $
+# (C) Copyright 1998 Jauder Ho <jauderho@carumba.com>
+#
+# 090398 jauderho [created]
+# 090498 jauderho [groks A, CNAME and TXT records correctly]
+#
+
+my $domain = "transmeta.com";
+my $dnshome = "/var/named";
+my $fileBuildLock = "$dnshome/locks/dnsGenHosts.lock";
+my $fileData = "$dnshome/etc/hosts";
+my $dummyField = "$domain";
+
+my %hosts;
+my %cnames;
+my %txt;
+my %lines;
+my (%seenH,%seenC,%seenT);
+
+$ENV{'PATH'} = "/bin:/usr/bin:/usr/sbin:/usr/local/bin:${dnshome}/bin";
+
+# Check out, generate from ls -d and check in
+`co -l -q ${fileData}`;
+
+open(OUTPUT,">$fileData") or die "ERROR: Cannot open file $fileData\n";
+select(OUTPUT);
+open(INPUT,"echo ls -d $domain | nslookup |")
+or die "ERROR: Cannot get data from $domain\n";
+while (<INPUT>) {
+	my @array; 
+
+	next unless /\bIN\b/;	# Ignore junk
+	next if /(SOA|NS|MX)/;	# Can't get useful information out of this
+	chomp();
+	s/^\s+//;		# Suck in the front!
+
+	if (/^1D/) {
+		(@array) = split(/\s+/,${_},4);
+		unshift(@array,$dummyField);
+	} else {
+		(@array) = split(/\s+/,${_},5);
+	}
+
+	$dummyField = $array[0];
+	next if ($array[0] =~ /$domain/);
+
+	# Generate lists of A, CNAME and TXT records
+	if ($array[3] =~ /^A$/) {
+		$hosts{$array[0]} .= "$array[4] ";
+	} elsif ($array[3] =~ /^CNAME$/) {
+		$cnames{$array[4]} .= "$array[0] ";
+	} elsif ($array[3] =~ /^TXT$/) {
+		$array[4] =~ s/"## (.*?)"/# $1/; # Get rid of that ridiculous
+						 # TXT formating
+		$txt{$array[0]} .= "$array[4] ";
+	}
+}
+
+for $name (keys %hosts) {
+	my @arrayIP;
+
+	@arrayIP = split(/\s+/,$hosts{$name});
+	for $ip (@arrayIP) {
+		my $uniq = $ip . $name;
+		$lines{$uniq} .= sprintf("%-16s\t%s ",$ip,$name);
+		
+		# Tack on the CNAMES if any.
+		if ($cnames{$name}) {
+			$lines{$uniq} .= "$cnames{$name}";
+		}
+
+		# Finally add TXT if any.
+		if ($txt{$name}) {
+			$lines{$uniq} .= "$txt{$name}";
+		}
+	}
+}
+
+for (sort keys %lines) {
+	print "$lines{$_}\n";
+}
+
+close(INPUT);
+close(OUTPUT);
+
+# Check in changes
+`ci -f -q -m"Updated by dnsGenHosts" -u ${fileData}`;
+
+# The End

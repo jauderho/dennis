@@ -1,0 +1,33 @@
+#!/usr/bin/perl -Tw
+#
+# autoDennis
+#
+# Automatically regenerate DNS data from $dnshome/etc/hosts.
+# This is a transition tool. YMMV.
+#
+# $Id: autoDennis,v 1.5 1998/09/04 21:02:17 jauderho Exp jauderho $
+# (C) Copyright 1998 Jauder Ho <jauderho@carumba.com>
+#
+# 090398 jauderho [created]
+# 090498 jauderho [moved most of the original code to ypGenHosts.]
+#		  [ypGenHosts does not give enough info so we use dnsGenHosts]
+#
+
+my $dnshome = "/var/named";
+my $fileBuildLock = "$dnshome/locks/dennis.lock"; # Only dennis or autoDennis
+						  # can run at one time
+
+$ENV{'PATH'} = "/bin:/usr/bin:/usr/sbin:/usr/local/bin:${dnshome}/bin";
+
+die "ERROR: DNS is currently being regenerated. If you are sure that\n       this is not the case, then remove $fileBuildLock\n" if (-f "$fileBuildLock");
+
+`touch ${fileBuildLock}`;
+
+# Now regenerate and rebuild the DNS
+system(dennisBuild);
+system(createSecondary);
+
+# Remove lock file.
+unlink(${fileBuildLock});
+
+# The End

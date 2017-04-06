@@ -1,0 +1,57 @@
+#!/usr/bin/perl -Tw
+#
+# createDNSData
+#
+# Get a listing from doing a echo ls -d <domain> | nslookup | grep IN
+# This is mainly to help with porting purposes. YMMV.
+#
+# $Id: createDNSData,v 1.1 1998/09/04 21:03:04 jauderho Exp jauderho $
+# (C) Copyright 1998 Jauder Ho <jauderho@carumba.com>
+#
+# 090398 jauderho [created]
+#
+
+my $domain = "transmeta.com";
+my $dnshome = "/var/named";
+my $fileBuildLock = "$dnshome/locks/createDNSData.lock";
+my $fileData = "$dnshome/etc/dnsdata";
+my $dummyField = "$domain";
+
+$ENV{'PATH'} = "/bin:/usr/bin:/usr/sbin:/usr/local/bin:${dnshome}/bin";
+
+# Check out, generate from ls -d and check in
+# `co -l -q ${fileData}`;
+
+#open(OUTPUT,">$fileData") or die "ERROR: Cannot open file $fileData\n";
+#select(OUTPUT);
+open(INPUT,"echo ls -d $domain | nslookup |")
+or die "ERROR: Cannot get data from $domain\n";
+while (<INPUT>) {
+	my @array; 
+
+	next unless /\bIN\b/;	# Ignore junk
+	next if /SOA/; 		# Can't get useful information out of this
+	chomp();
+	(@array) = split;
+
+	# Enter in placeholder just in case.
+	if ($array[0] =~ /1D/) {
+		unshift(@array,$dummyField);
+	}
+
+	$dummyField = $array[0];
+
+	# Start the giant if statement
+	if ($array[3] =~ /^(NS|MX)$/) {
+		print "$array[3] $domain $array[4]\n";
+	} elsif ($array[3] =~ /^(A|TXT|CNAME)$/) {
+		print "@array[3,0,4..$#array]\n";
+	} 
+}
+
+close(INPUT);
+#close(OUTPUT);
+
+# `ci -f -q -m"Updated by createDNSData" -u ${fileData}`;
+
+# The End

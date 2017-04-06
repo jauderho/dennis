@@ -44,7 +44,7 @@ chomp($date);   # Chomp!
 my $fileBuildLock	= "$dnshome/locks/createSecondary.lock";
 my $fileDNSBuildLock	= "$dnshome/locks/dnsBuild.lock";
 my $fileNamedBoot       = "$dnshome/secondary/named.boot";
-my $oldNamedBoot        = "$fileNamedBoot.$date";
+my $oldNamedBoot        = "$fileNamedBoot.secondary.$date";
 my $contactName 	= "hostmaster\@$domainName";
 my $mailer		= "/usr/lib/sendmail";
 

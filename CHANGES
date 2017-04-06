@@ -13,3 +13,7 @@ $Id: CHANGES,v 1.1 1998/04/29 08:18:57 jauderho Exp jauderho $
 	output either bind4 or bind8 zone files for both master and
 	secondaries. You can only choose to output bind4 or bind8 for the 
 	master but you can output to either or both for the secondaries.
+
+0.09alpha
+	Added a whole slew of new tools designed to help make the migration
+	process a little easier. Look in tools/ for the scripts.

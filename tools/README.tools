@@ -1,0 +1,12 @@
+$Id$
+
+  (C) Copyright 1997-98 Jauder Ho <jauderho@carumba.com>
+
+This directory contains scripts and info that might help you in migrating
+from your current DNS configuration to one compatible with dennis that have
+been copied, donated from other people or written by me. The scripts should
+have pretty clear documentation as to what and how they do things.
+
+Please respect the various copyrights associated with each program. Contact
+the author directly if you have any questions about the software.
+

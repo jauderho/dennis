@@ -1,0 +1,81 @@
+$Id: README,v 1.2 1998/04/24 10:06:38 jauderho Exp jauderho $
+ 
+  (C) Copyright 1997-98 Jauder Ho <jauderho@carumba.com>
+ 
+INTRODUCTION
+
+  Here is the protoype version of dennis, an automated DNS builder/maintainer.
+  Right now it builds for a BIND 8 DNS master and BIND 4 slaves. That will
+  change to allow a mixture of BIND 4 or 8 masters and slaves later. The zone
+  files are built from an /etc/hosts style file. This could potentially expand
+  to reading the data from an LDAP or SQL database later. A syntax checker is
+  also included. It should catch duplicate IPs and other bogus entries. The
+  format for the lookup files built is one file for the forward lookup and
+  multiple for the reverse which depend on the first three octets of an IP.
+  There is some built intelligence where dennis will figure out if zone files
+  have changed (this can happen the first time you add an IP where a zone file
+  for it does not already exist) and optionally mail hostmaster.
+
+  This software is currently in use at KLA-Tencor and additional testing has
+  been done at Transmeta Corporation. It is not a finished piece of work and
+  should not be considered as such. It also assumes that you know a fair amount
+  about BIND already, it is not meant to teach you how use BIND, rather than to
+  automate what is a mostly repetitive task that might be prone to errors.
+
+  The scripts should be setuid safe and you can choose to either make dennis
+  setuid or just run it as root depending on your site security policy. If you
+  discover any problems, please tell me.
+
+MOTIVATION
+
+  Frankly, I got tired of updating DNS by hand all the time. There were lots of
+  times where I would update the forward lookup and forget the reverse. Silly
+  things like forgetting to increment the serial number just add to needless
+  pain. While I was at KLA-Tencor, there was this antiquted shell script that
+  took 10-15 mins to rebuild the DNS every time. This is the rewrite. It now
+  takes less than 30 secs to build. It has been tested on a host table that has
+  ~4500 entries and should have no real problems scaling. Please tell me if
+  you encounter slowness.
+
+REQUIREMENTS
+  
+  perl
+	You can decided if you want the program to be setuid. But all scripts
+	are setuid safe up to the latest version of perl i.e. they pass
+	perl5.004_04's taint-checking.
+
+  bind
+  	As of now, you need to be running bind 8 on your master nameserver. I
+	will resurrect the code to output bind 4 info as an option probably in
+	a later release.
+
+  RCS
+  	This is for putting the hosts file under revision control.
+
+AVAILABILITY
+  
+  It is available at the following site.
+
+  http://www.carumba.com/~jauderho/code/dennis/
+
+MISC
+
+  Why is this called dennis?
+	Well DNS sounds like dennis if you sort of slur it so I decided to call
+	it that for lack of a better name.
+	
+  Released under the GPL license. Do read it.
+  Please send any bug reports/suggestions/comments to dennis@carumba.com.
+ 
+  This is commentware. I am trying to speed up the process of getting a Green
+  Card. Every favorable email that you send can (with your permission) be 
+  used in my petition to the government. So if you find this software useful,
+  do drop me a line saying so. Please include your title if possible. Thanks.
+
+  I am also interested in finding out who uses this software. Please do the
+  following
+
+  	uname -a | Mail -s "dennis usage survey" dennis-survey@carumba.com
+
+  You will not get a reply nor will your email address be used for spam. 
+

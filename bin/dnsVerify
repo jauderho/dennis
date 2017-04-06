@@ -2,7 +2,7 @@
 #
 # dnsVerify
 #
-# This verifies that the hosts file used by dnsBuild does not contain any
+# This verifies that the hosts file used by dennisBuild does not contain any
 # errors. At this time it does not take any corrective action, only warning
 # messages are issued.
 #
@@ -68,7 +68,7 @@ sub checkIP {
 		$seenIP{$ip}++;	
 		
 		if ($seenIP{$ip} > 1) {
-			push(@outArray,"WARNING: dulplicate IP\t    $ip");
+			push(@outArray,"WARNING: dupe IP\t$ip");
 		}
 
 		# The line has to start with an IP address
@@ -129,7 +129,7 @@ sub checkHosts {
 
 	# Store it in @outArray
 	for (keys %dupHosts) {
-		push(@outArray,"WARNING: multiple IP\t    " . pack("A16",$_) .
+		push(@outArray,"WARNING: multiple IP\t" . pack("A16",$_) .
 		$dupHosts{$_}); 
 	}
 }

@@ -58,7 +58,7 @@ sub createBind8ZoneConf;
 sub localHostnameHack;
 
 # CHANGE this to suit your bind master
-my $servertype =	"bind4";
+my $servertype =	"bind8";
 
 my $cmp =		"cmp";
 my $mv =		"/bin/mv -f";
@@ -334,7 +334,7 @@ sub closeFiles {
 sub printHeader {
 	my ($filehandle) = @_;
 
-	print	$filehandle	"\@\tIN\tSOA\t$serverName\.$domainName\." , 
+	print	$filehandle	"\@\tIN\tSOA\t$serverName\.$domainName." , 
 				" $contactName. (\n" ,
 				"\t\t$serial\t; Serial\n" ,
 				"\t\t10800\t\t; Refresh after 3 hours\n" ,

@@ -27,7 +27,7 @@
 # 042498 jauderho [updated and cleaned up for initial release]
 #
 
-export PATH=/bin:/usr/bin:/usr/local/bin:/var/named/bin
+export PATH=/bin:/usr/bin:/usr/sbin:/usr/local/bin:/var/named/bin
 
 dnshome=/var/named
 fileBuildLock=$dnshome/locks/editDNS.lock
