@@ -1,0 +1,27 @@
+$Id: TODO,v 1.1 1998/04/19 10:27:23 jauderho Exp jauderho $
+
+- Lots.
+
+- As of now I am not even sure if it will even work out the box. I am hoping
+  that by releasing this sooner than later, that I will be able to get it
+  usable again.
+
+- Documentation. I need to document most of this stuff. The code is pretty
+  well commented but there needs to be documentation that describes what does 
+  what.
+
+- Have dennisBuild grok stuff after # and use it as TXT records
+
+- I will probably move to using an SQL database and/or LDAP to create the host
+  entries. /etc/hosts style files do have their limitations. 
+
+- More speed would be nicer although it is currently plenty fast. I suspect
+  most time is actually spent reading data in. Benchmarking required.
+
+- Additional support for creating various kind of zone files such as secondary
+  bind 8 format files. 
+
+- Redo the dennis.conf and the way it is read. Right now it sits in bin/ but
+  it should move to etc/ instead
+
+- Ability to set levels of paranoia for dnsVerify.

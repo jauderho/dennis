@@ -1,0 +1,71 @@
+#!/bin/sh
+#
+# dennis
+#
+# The shell interface to editing and rebuilding DNS. Maybe this could be a 
+# perl script instead.
+# Configuration options can be found in etc/dennis.conf
+#
+# $Id: dennis,v 1.2 1998/04/25 09:09:13 jauderho Exp jauderho $
+# (C) Copyright 1997,1998 Jauder Ho <jauderho@carumba.com>
+#
+#    This program is free software; you can redistribute it and/or modify it
+#    under the terms of the GNU General Public License as published by the Free
+#    Software Foundation; either version 2 of the License, or (at your option)
+#    any later version.
+#
+#    This program is distributed in the hope that it will be useful, but
+#    WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+#    or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+#    for more details.
+#
+#    You should have received a copy of the GNU General Public License along
+#    with this program; if not, write to the Free Software Foundation, Inc., 59
+#    Temple Place, Suite 330, Boston, MA 02111-1307, USA
+#
+# 052897 jauderho [created]
+# 042498 jauderho [updated and cleaned up for initial release]
+#
+
+export PATH=/bin:/usr/bin:/usr/local/bin:/var/named/bin
+
+dnshome=/var/named
+fileBuildLock=$dnshome/locks/editDNS.lock
+fileHosts=$dnshome/etc/hosts
+
+if [ -f $fileBuildLock ]; then
+	echo "ERROR: DNS is currently being edited. If you are sure that "
+	echo "       this is not the case, then remove $fileBuildLock"
+	exit
+fi
+
+touch $fileBuildLock 
+
+# Check out, edit, build and check in
+co -l $fileHosts
+vi $fileHosts
+
+clear
+
+echo "Verifying host table syntax..."
+dnsVerify
+echo
+
+echo -n "Do you want to rebuild the dns tables [y/N]? "
+read answer
+
+case $answer in
+        [Yy]*)
+		clear 
+
+             	echo "Building DNS now..."
+             	dennisBuild
+		createSecondary   
+                ;;
+esac
+
+ci -u $fileHosts
+
+rm $fileBuildLock 
+echo
+exit

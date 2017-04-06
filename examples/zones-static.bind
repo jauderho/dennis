@@ -1,0 +1,24 @@
+/*
+ * static zone configuration for carumba.com domain 
+ *
+ * 080497 jauderho [created - bind-8.1 format]
+ *
+ * note: this information is not created by the build script
+ */
+
+zone "carumba.com" in {
+        type master;
+        file "master/carumba.com";
+        check-names warn;
+};
+
+zone "10.in-addr.arpa" {
+        type master;
+        file "static/10";
+};
+ 
+zone "." in {
+        type hint;
+        file "static/named.cache";
+};
+ 

@@ -1,0 +1,294 @@
+#!/usr/bin/perl -Tw
+#
+# dennisBuild
+#
+# The dns builder script for the DNS master. 
+# This takes an /etc/hosts style table and spits out stuff in BIND 8 format.
+# Configuration options can be found in ../etc/dennis.conf
+#
+# $Id: dennisBuild,v 1.2 1998/04/25 09:14:48 jauderho Exp jauderho $
+# (C) Copyright 1997-98 Jauder Ho <jauderho@carumba.com>
+#
+#    This program is free software; you can redistribute it and/or modify it
+#    under the terms of the GNU General Public License as published by the Free
+#    Software Foundation; either version 2 of the License, or (at your option)
+#    any later version.
+#
+#    This program is distributed in the hope that it will be useful, but
+#    WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+#    or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+#    for more details.
+#
+#    You should have received a copy of the GNU General Public License along
+#    with this program; if not, write to the Free Software Foundation, Inc., 59
+#    Temple Place, Suite 330, Boston, MA 02111-1307, USA
+#
+# 050297 jauderho [created]
+# 051397 jauderho [modified for bind 8.1 format]
+# 051497 jauderho [modified to use named.pid file]
+# 051497 jauderho [removed creation of resolv.conf file]
+# 051497 jauderho [further code cleanup]
+# 052397 jauderho [added some sanity checks and fixed globbing of cmp status]
+# 052997 jauderho [now does proper file locking]
+# 080497 jauderho [modified for usage at transmeta]
+# 081997 jauderho [moved vars to a different file, use ndc to reload named]
+# 091897 jauderho [fixed problems with the -T switch on]
+#		  [now perl5.00403 compatible]
+# 092497 jauderho [serial no. is now compliant in the yyyymmddnn format]
+# 103197 jauderho [updated to work under perl5.00404, supposed bugfixs to taint]
+#
+
+use FileCache;
+use File::Copy "cp";
+require "/var/named/etc/dennis.conf";
+chomp($date);	# Chomp!
+
+# Declare my subroutines and variables
+sub printHeader;
+sub removeFiles;
+sub openFiles;
+sub closeFiles;
+sub createLookup;
+sub createZoneConf;
+sub localHostnameHack;
+
+my $cmp =		"/usr/bin/cmp";
+my $mv =		"/bin/mv -f";
+my $contactName =	"hostmaster.${domainName}";
+my $fileBuildLock =     "$dnshome/locks/dnsBuild.lock";
+my $serialdate =	`date '+%Y%m%d'`;
+my $serial;
+
+my @dnsArray;
+my @dnsReverseIP;
+my %seen;
+
+# Do some checks first. Don't even start the build process if lock file exists.
+if (-e $fileBuildLock) {
+	die "ERROR: DNS is currently rebuilding. If you are sure that this ",
+	    "is not the case,\n       then remove $fileBuildLock\n";
+}
+
+# Make sure that no one else can rebuild DNS at the same time
+open(LOCK,">$fileBuildLock") or die "Cannot create lock file $fileBuildLock\n";
+close(LOCK);
+
+# Setup and/or get the serial no.
+open(SERIAL,"+<$fileSerial") or open(SERIAL,"+>$fileSerial") or 
+die "Cannot open file $fileSerial\n";
+chomp($serialdate);
+print SERIAL "${serialdate}00\n" if (-z $fileSerial);
+seek(SERIAL,0,0);	# The previous perl gymnastics is for the case that
+			# $fileSerial is empty.
+$serial = <SERIAL>;
+chomp($serial);
+if ($serial =~ /^$serialdate/) {
+	$serial++;
+} else {
+	$serial = $serialdate . "00";
+}
+seek(SERIAL,0,0);
+print SERIAL "$serial\n";
+close(SERIAL);
+
+# Read only the IP lines in from the file. Ignore everything else.
+open(DNS,"$fileHosts") or die "Cannot open $fileHosts\n";
+while (<DNS>) {
+	next if /^\D/;	# We are not interested in comments and blank lines
+	s/#.*//;
+	chomp($_);
+	push(@dnsArray,$_);
+}
+close(DNS);
+
+# Create the reverse IP array
+for (@dnsArray) {
+	my $revIP;
+	
+	/^([0-9]*)\.([0-9]*)\.([0-9]*)\.[0-9]*/;
+	$revIP = $1 . "." . $2 . "." . $3;
+	push(@dnsReverseIP,$revIP) unless $seen{$revIP}++;
+}
+
+removeFiles;	# Clear out all the old zone files from the previous build
+openFiles;	# Open all the required files for writing
+createLookup;
+
+# Append nameserver and MX info to the end of the db.domain file
+open(NS,"$fileNameServers") or die "Cannot open $fileNameServers\n";
+while (<NS>) {
+	cacheout $fileForZone;
+	print $fileForZone $_;
+}
+close(NS);
+closeFiles;
+
+createZoneConf;
+
+# Unlock in preparation since we are all done.
+unlink($fileBuildLock) or die "Cannot remove file $fileBuildLock\n";
+
+## The End ##
+
+sub createLookup {
+	for (@dnsArray) {	
+		my $ip;
+		my $fullhostname;
+		my $hostname;
+		my $hostIP;
+		my $revIP;
+		my $fileRevIP;
+		my @fields;
+
+		# Setup the various fields in preparation for writing.
+		(@fields) = split(/\s+/,$_); 	
+		$ip = shift(@fields);
+		$hostname = shift(@fields);
+
+		# Ignore if the $hostname field is empty 
+		next if (! defined($hostname));
+
+		# Hack. Hack. Hack.
+		$fullhostname = localHostnameHack($hostname);
+
+		$ip =~ /^([0-9]*)\.([0-9]*)\.([0-9]*)\.([0-9]*)/;
+		$hostIP = $4;
+		$revIP = $1 . "." . $2 . "." . $3;
+		$fileRevIP = "$dnshome/master/$revIP";
+
+		# Write the forward lookups and CNAMEs
+		cacheout $fileForZone;
+		printf $fileForZone "%-24sIN\tA\t$ip\n", $hostname;
+		if ($#fields >= 0) {
+			for (@fields) {
+				printf 	$fileForZone "%-24sIN\t\CNAME\t%s\n",
+					$_, $hostname;	
+			}
+		}
+
+		# Write the reverse lookups.
+		cacheout $fileRevIP;
+		print $fileRevIP "$hostIP\tIN\tPTR\t$fullhostname\n";	
+	}
+}
+
+sub createZoneConf {
+	my $oldZoneConf;
+	my $ip;
+	my $revIP;
+	my $zoneDate;
+
+	$date =~ /^(.*)$/;
+	$zoneDate = $1;	
+	$oldZoneConf = "$dnshome/etc/save/zones.bind.$zoneDate";
+
+	if (-f $fileZoneConf) {
+		cp($fileZoneConf,$oldZoneConf);
+		unlink($fileZoneConf);
+	}
+
+	# Write to zone.bind
+	open(NB,">$fileZoneConf") or die "Cannot open $fileZoneConf\n";
+	print  NB "\# zone information for $domainName domain\n";
+	
+	for (@dnsReverseIP) {
+		$ip = $_;
+                $ip =~ /^([0-9]*)\.([0-9]*)\.([0-9]*)/;
+                $revIP = $3 . "." . $2 . "." . $1;
+		printf NB "zone \"$revIP.in-addr.arpa\" {\n";
+		printf NB "\ttype master;\n";
+		printf NB "\tfile \"master/$ip\";\n";
+		printf NB "\tcheck-names ignore;\n";
+		printf NB "};\n\n";
+	}
+	close(NB);
+
+	if (-f $oldZoneConf) {
+		my $status; 
+
+		open(STATUS,"$cmp $fileZoneConf $oldZoneConf 2>&1 |") or
+		die "Cannot compare $fileZoneConf and $oldZoneConf\n";
+		$status = <STATUS>;
+		close(STATUS);
+
+		unlink($oldZoneConf) unless defined($status);
+	}
+}
+
+sub localHostnameHack {
+	my ($hostname) = @_;
+	my $fullhostname;
+
+	# This is to take care of any site specific hacks	
+	if ($hostname =~ /\.$/) {
+		$fullhostname = $hostname;
+	} else {
+		$fullhostname = "$hostname.$domainName.";
+	}
+
+	return $fullhostname;	
+}
+
+sub removeFiles {
+	my @removefiles;
+	my $taintfile;
+
+	# Use opendir and friends since a filehandle glob is now insecure
+	opendir(RFDIR,"$dnshome/master") 
+	or die "Cannot open directory $dnshome/master\n";
+	@removefiles = grep !/^\.\.?$/, readdir(RFDIR);
+	closedir(RFDIR);
+
+	# Remove all the old files as they are going to get rebuilt anyways
+	for $taintfile (@removefiles) {
+		my $cleanfile;
+
+		$taintfile =~ /^(.*)$/;	# All this untainting is a pain.
+		$cleanfile = $1;
+		unlink("$dnshome/master/$cleanfile");
+	}	
+}
+
+sub openFiles {
+	# By opening all the files at once, we can write everything in one pass.
+	# cacheout() is used as we do not know how many reverse db files are
+	# going to be created till runtime and this can easily exceed
+	# the number of file descriptors available to a process. 
+
+	# Open the forward lookup file
+	cacheout $fileForZone;		
+	printHeader($fileForZone);		
+		
+	# Open the reverse lookup files
+	for (@dnsReverseIP) {
+		my $fileRevIP;
+
+		$fileRevIP = "$dnshome/master/$_";
+		cacheout $fileRevIP;
+		printHeader($fileRevIP);		
+	}
+}
+
+sub closeFiles {
+	close($fileForZone);
+
+	for (@dnsReverseIP) {
+		my $fileRevIP;
+
+		$fileRevIP = "$dnshome/master/$_";
+		close($fileRevIP);
+	}
+}
+
+sub printHeader {
+	my ($filehandle) = @_;
+
+	print	$filehandle	"\@\tIN\tSOA\t$serverName\.$domainName\." , 
+				" $contactName. (\n" ,
+				"\t\t$serial\t; Serial\n" ,
+				"\t\t10800\t\t; Refresh after 3 hours\n" ,
+				"\t\t3600\t\t; Retry after 1 hour\n" ,
+				"\t\t604800\t\t; Expire after 1 week\n" , 
+				"\t\t86400 )\t\t; Minimum TTL of 1 day\n" ,
+				"\tIN\tNS\t$serverName\.$domainName\.\n";
+}

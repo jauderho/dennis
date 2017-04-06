@@ -1,0 +1,10 @@
+$Id: INSTALL,v 1.1 1998/04/24 22:03:58 jauderho Exp jauderho $
+
+  (C) Copyright 1997-98 Jauder Ho <jauderho@carumba.com>
+
+INSTALLATION
+
+  There are example configs in examples/, do copy them over into etc/. I have
+  left empty files in etc/ indicating where things should go. 
+
+  To get started put an /etc/hosts file in etc/ and run dennis.

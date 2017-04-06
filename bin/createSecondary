@@ -1,0 +1,123 @@
+#!/usr/bin/perl -w
+#
+# createSecondary
+#
+# Create named.boot file for secondary DNS machines.
+# This is obviously in BIND 4 format.
+#
+# $Id: createSecondary,v 1.6 1998/03/22 11:16:15 jauderho Exp jauderho $
+# (C) Copyright 1997,1998 Jauder Ho <jauderho@carumba.com>
+#
+# 051597 jauderho [created]
+# 052297 jauderho [mail named.boot to hostmaster if there are changes in zones]
+# 052997 jauderho [add proper file locking for the script]
+#
+
+require "/var/named/etc/dennis.conf";
+
+# Declare my subroutines and variables
+sub reverseZone;
+
+my $zone;
+my $status;
+my $cmp = "/bin/cmp";
+my $mv = "/bin/mv -f";
+
+chomp($date);   # Chomp!
+
+my $fileBuildLock	= "$dnshome/locks/createSecondary.lock";
+my $fileDNSBuildLock	= "$dnshome/locks/dnsBuild.lock";
+my $fileNamedBoot       = "$dnshome/secondary/named.boot";
+my $oldNamedBoot        = "$fileNamedBoot.$date";
+my $contactName 	= "hostmaster\@$domainName";
+my $mailer		= "/usr/lib/sendmail";
+
+# Do some checks first. 
+if (-e $fileDNSBuildLock) {
+	die "ERROR: DNS is currently rebuilding. Creating a named.boot now ",
+	    "would probably\n       result in an incomplete file. ",
+	    "If you are sure that this is not\n       ",
+	    "the case, then remove $fileDNSBuildLock\n";
+}
+
+if (-e $fileBuildLock) {
+	die "ERROR: createSecondary is currently rebuilding. If you are ",
+	    "sure that this is not\n       the case, then remove ",
+	    "$fileBuildLock\n";
+}
+
+# Make sure that no one else can create secondary named.boot at the same time
+open(LOCK,">$fileBuildLock") or die "Cannot create lock file $fileBuildLock\n";
+close(LOCK);
+
+# Hack since File::Copy does not work.
+if (-f $fileNamedBoot) {
+#        `$mv $fileNamedBoot $oldNamedBoot`;
+}
+
+# Write to named.boot for secondary
+open(NB,"+>$fileNamedBoot") or die "Cannot open file $fileNamedBoot\n";
+print  NB "\; named.boot for domain $domainName - secondary server\n",
+	  "directory\t$dnshome\n";
+printf NB "cache\t\t%-24s\t%-20s\n", ".", "db.cache";
+printf NB "primary\t\t%-24s\t%-20s\n", "0.0.127.in-addr.arpa", "127.0.0";
+printf NB "secondary\t%-24s\t%s   %s\n", $domainName, $serverIP,
+	  $domainName;
+printf NB "secondary\t%-24s\t%s   %s\n", "10.in-addr.arpa", $serverIP, 
+	  "db.10";
+
+chdir("$dnshome/master") or die "Cannot change directory to $dnshome/master\n";
+
+# Create the rest of the file
+for $zone (<*>) {
+	my $reversezone;
+
+	next if ($zone =~ /$domainName/ 
+	or $zone =~ /127.0.0/);
+	$reversezone = reverseZone($zone);
+	
+	printf NB "secondary\t%-24s\t%s   %s\n", "$reversezone.in-addr.arpa",
+		  $serverIP, "db.".$zone;	
+} 
+
+# Really ugly hack to get the results of the cmp
+open(STATUS,"$cmp $fileNamedBoot $oldNamedBoot 2>&1 |") or 
+die "Cannot compare $fileNamedBoot and $oldNamedBoot\n";
+$status = <STATUS>;
+close(STATUS);
+
+# Mail to $contactName if the file changes
+if ($status =~ /differ/) {
+	my $slurp;
+
+	open(MAIL,"|$mailer -t");
+
+	print MAIL "To: $contactName\n",
+		   "From: dnsBuild\@$domainName\n",
+		   "Subject: New named.boot for secondary named servers\n\n";
+
+	print MAIL "The named.boot has been updated. Please get the latest ",
+		   "file via the network\n\n";
+
+	close(MAIL);
+
+	print "Mailing new secondary DNS named.boot to $contactName\n";
+} else {
+	unlink($oldNamedBoot);
+}
+
+close(NB);
+
+unlink($fileBuildLock) or die "Cannot remove file $fileBuildLock\n";
+
+# The End!
+
+sub reverseZone {
+	my ($ip) = @_;
+	my $revip;
+	my @arrayip;
+
+	(@arrayip) = split(/\./,$ip);
+	$revip = join ".", reverse(@arrayip);
+	return $revip;
+}

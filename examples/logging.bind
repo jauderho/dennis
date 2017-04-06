@@ -1,0 +1,17 @@
+/*
+ * logging configuration for carumba.com domain 
+ *
+ * 080497 jauderho [created - bind-8.1 format]
+ *
+ */
+
+logging {
+	channel bind_log {
+		file "/var/named/log/bind"
+		versions 9
+		size 5M;
+		severity info;
+	};
+        category lame-servers { bind_log; default_syslog; };
+        category cname { bind_log; default_syslog; };
+};

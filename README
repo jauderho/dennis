@@ -1,0 +1,48 @@
+$Id: README,v 1.2 1998/04/24 10:06:38 jauderho Exp jauderho $
+ 
+  (C) Copyright 1997-98 Jauder Ho <jauderho@carumba.com>
+ 
+INTRODUCTION
+
+  Here is the protoype version of dennis, an automated DNS builder/maintainer.
+  Right now it builds for a BIND 8 DNS master and BIND 4 slaves. That will
+  change to allow a mixture of BIND 4 or 8 masters and slaves later. The zone
+  files are built from an /etc/hosts style file. This could potentially expand
+  to reading the data from an LDAP or SQL database later. A syntax checker is
+  also included. It should catch duplicate IPs and other bogus entries.
+
+  This software is currently in use at KLA-Tencor and additional testing has
+  been done at Transmeta Corporation. It is not a finished piece of work and
+  should not be considered as such. It also assumes that you know a fair amount
+  about BIND already, it is not meant to teach you how use BIND, rather than to
+  automate what is a mostly repetitive task that might be prone to errors.
+
+  The scripts should be setuid safe and you can choose to either make editDNS
+  setuid or just run it as root depending on your site security policy. If you
+  discover any problems, please tell me.
+
+MOTIVATION
+
+  Frankly, I got tired of updating DNS by hand all the time. There were lots of
+  times where I would update the forward lookup and forget the reverse. Silly
+  things like forgetting to increment the serial number just add to needless
+  pain. While I was at KLA-Tencor, there was this old antiquted shell script
+  that took 10-15 mins to rebuild the DNS every time. This is the rewrite. What
+  used to take 10-15mins to build now takes 30s tops. It has been tested on a
+  host table that has ~4500 entries and should have no real problems scaling.
+
+AVAILABILITY
+  
+  It is available at the following sites.
+
+  http://www.carumba.com/~jauderho/code/dennis/		(Primary)
+
+MISC
+
+  Why is this called dennis?
+	Well DNS sounds like dennis if you sort of slur it so I decided to call
+	it that for lack of a better name.
+	
+  Released under the GPL license. Do read it.
+  Please send any bug reports/suggestions/comments to jauderho@carumba.com.
+ 

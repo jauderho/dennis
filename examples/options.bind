@@ -1,0 +1,13 @@
+/*
+ * options configuration for transmeta.com domain 
+ *
+ * 080497 jauderho [created - bind-8.1 format]
+ *
+ */
+
+options {
+        directory "/var/named";
+	statistics-file "/var/named/stats"; 
+	forwarders { 10.1.1.10; };
+};
+
