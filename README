@@ -1,6 +1,6 @@
 $Id: README,v 1.2 1998/04/24 10:06:38 jauderho Exp jauderho $
  
-  (C) Copyright 1997-98 Jauder Ho <jauderho@carumba.com>
+  (C) Copyright 1997-98 Jauder Ho <jauderho+dennis@carumba.com>
  
 INTRODUCTION
 
@@ -51,22 +51,6 @@ REQUIREMENTS
   RCS
   	This is for putting the hosts file under revision control.
 
-AVAILABILITY
-  
-  It is available at the following site.
-
-  http://www.slip.net/~jauderho/code/dennis/
-
 MISC
 
-  Why is this called dennis?
-	Well DNS sounds like dennis if you sort of slur it so I decided to call
-	it that for lack of a better name.
-	
   Released under the GPL license. Do read it.
-  Please send any bug reports/suggestions/comments to dennis@carumba.com.
- 
-  This is commentware. I am trying to speed up the process of getting a Green
-  Card. Every favorable email that you send can (with your permission) be 
-  used in my petition to the government. So if you find this software useful,
-  do drop me a line saying so. Please include your title if possible. Thanks.
