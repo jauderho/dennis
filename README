@@ -16,25 +16,14 @@ INTRODUCTION
   have changed (this can happen the first time you add an IP where a zone file
   for it does not already exist) and optionally mail hostmaster.
 
-  This software is currently in use at KLA-Tencor and additional testing has
-  been done at Transmeta Corporation. It is not a finished piece of work and
-  should not be considered as such. It also assumes that you know a fair amount
-  about BIND already, it is not meant to teach you how use BIND, rather than to
-  automate what is a mostly repetitive task that might be prone to errors.
+  It is not a finished piece of work and should not be considered as such. It
+  also assumes that you know a fair amount about BIND already, it is not meant to
+  teach you how use BIND, rather than to automate what is a mostly repetitive
+  task that might be prone to errors.
 
   The scripts should be setuid safe and you can choose to either make dennis
   setuid or just run it as root depending on your site security policy. If you
   discover any problems, please tell me.
-
-MOTIVATION
-
-  Frankly, I got tired of updating DNS by hand all the time. There were lots of
-  times where I would update the forward lookup and forget the reverse. Silly
-  things like forgetting to increment the serial number just add to needless
-  pain. While I was at KLA-Tencor, there was this antiquted shell script that
-  took 10-15 mins to rebuild the DNS every time. This is the rewrite. What used
-  to take 10-15mins to build now takes less than 30s. It has been tested on a
-  host table that has ~4500 entries and should have no real problems scaling.
 
 REQUIREMENTS
   
