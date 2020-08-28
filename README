@@ -28,7 +28,7 @@ INTRODUCTION
 REQUIREMENTS
   
   perl
-	You can decided if you want the program to be setuid. But all scripts
+	You can decide if you want the program to be setuid. But all scripts
 	are setuid safe up to the latest version of perl i.e. they pass
 	perl5.004_04's taint-checking.
 
