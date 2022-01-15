@@ -49,7 +49,7 @@ while(<>) {
     
     chop;
     
-    # deal with lines ending in a coment
+    # deal with lines ending in a comment
     if (s/\s*;+\s*(.*)$//) {
 	$comment = "// $1";
     } else {

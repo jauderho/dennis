@@ -59,7 +59,7 @@ while (<INPUT>) {
 		$cnames{$array[4]} .= "$array[0] ";
 	} elsif ($array[3] =~ /^TXT$/) {
 		$array[4] =~ s/"## (.*?)"/# $1/; # Get rid of that ridiculous
-						 # TXT formating
+						 # TXT formatting
 		$txt{$array[0]} .= "$array[4] ";
 	}
 }
