@@ -30,6 +30,8 @@
 export PATH=/bin:/usr/bin:/usr/sbin:/usr/local/bin:/var/named/bin
 
 dnshome=/var/named
+# This path MUST align with the $dnshome variable in etc/dennis.conf
+# (or the equivalent configuration used by the dennisBuild Perl script).
 fileBuildLock=$dnshome/locks/editDNS.lock
 fileHosts=$dnshome/etc/hosts
 
@@ -59,6 +61,9 @@ case $answer in
 		clear 
 
              	echo "Building DNS now..."
+                # The dennisBuild script relies on configuration settings
+                # (like $dnshome, $domainName, file paths, etc.)
+                # defined in etc/dennis.conf (or its Perl equivalent).
              	dennisBuild
 		createSecondary   
                 ;;
