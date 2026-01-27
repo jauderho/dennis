@@ -1,345 +1,245 @@
-#!/usr/bin/perl -Tw
-#
-# dennisBuild
-#
-# The dns builder script for the DNS master. 
-# This takes an /etc/hosts style table and spits out stuff in BIND 4/8 format
-# depending on the option chosen.
-# Configuration options can be found in ../etc/dennis.conf
-#
-# $Id: dennisBuild,v 1.4 1998/05/03 10:29:02 jauderho Exp jauderho $
-# (C) Copyright 1997-98 Jauder Ho <jauderho@carumba.com>
-#
-#    This program is free software; you can redistribute it and/or modify it
-#    under the terms of the GNU General Public License as published by the Free
-#    Software Foundation; either version 2 of the License, or (at your option)
-#    any later version.
-#
-#    This program is distributed in the hope that it will be useful, but
-#    WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
-#    or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-#    for more details.
-#
-#    You should have received a copy of the GNU General Public License along
-#    with this program; if not, write to the Free Software Foundation, Inc., 59
-#    Temple Place, Suite 330, Boston, MA 02111-1307, USA
-#
-# 050297 jauderho [created]
-# 051397 jauderho [modified for bind 8.1 format]
-# 051497 jauderho [modified to use named.pid file]
-# 051497 jauderho [removed creation of resolv.conf file]
-# 051497 jauderho [further code cleanup]
-# 052397 jauderho [added some sanity checks and fixed globbing of cmp status]
-# 052997 jauderho [now does proper file locking]
-# 080497 jauderho [modified for usage at Transmeta]
-# 081997 jauderho [moved vars to a configuration file, use ndc to reload named]
-# 091897 jauderho [fixed problems with the -T switch on]
-#		  [now perl5.00403 compatible]
-# 092497 jauderho [serial no. is now compliant in the yyyymmddnn format]
-# 103197 jauderho [updated to work under perl5.00404, supposed bugfixs to taint]
-# 050398 jauderho [added ability to read new conf file. supports bind4/8 builds]
-#
+#!/usr/bin/env perl -T
 
-use FileCache;
+use strict;
+use warnings;
+
 use File::Copy "cp";
-require "/var/named/etc/dennis.conf";
-chomp($date);	# Chomp!
 
-# Declare my subroutines and variables
-sub readConf;
+# Untaint a path safely
+sub untaint_path {
+    my ($path) = @_;
+    if ($path =~ /^([-\/\w\.\_]+)$/) {
+        return $1;
+    }
+    die "Insecure path detected: $path";
+}
+
+# Load and untaint configuration
+our ($date, $domainName, $serverName, $dnshome, $fileSerial, $fileHosts, $fileNameServers, $fileForZone);
+require "/var/named/etc/dennis.conf";
+
+$ENV{PATH} = '/bin:/usr/bin'; # Set a safe execution path
+
+# Untaint config values
+if ($date =~ /^(.*)$/s) { $date = $1; } else { die "Tainted date: $date"; }
+if ($domainName =~ /^(.*)$/s) { $domainName = $1; } else { die "Tainted domainName: $domainName"; }
+if ($serverName =~ /^(.*)$/s) { $serverName = $1; } else { die "Tainted serverName: $serverName"; }
+$dnshome = untaint_path($dnshome);
+$fileSerial = untaint_path($fileSerial);
+$fileHosts = untaint_path($fileHosts);
+$fileNameServers = untaint_path($fileNameServers);
+$fileForZone = untaint_path($fileForZone);
+
+chomp($date);
+
+# Simple filehandle cache
+my %file_handles;
+
+sub get_fh {
+    my ($path) = @_;
+    my $clean_path = untaint_path($path);
+    unless (exists $file_handles{$clean_path}) {
+        open my $fh, '>', $clean_path or die "Cannot open file '$clean_path' for writing: $!";
+        $file_handles{$clean_path} = $fh;
+        printHeader($fh); # Print header on first open
+    }
+    return $file_handles{$clean_path};
+}
+
+# --- Subroutine Declarations ---
 sub printHeader;
 sub removeFiles;
-sub openFiles;
-sub closeFiles;
 sub createLookup;
 sub createBindZoneConf;
-sub createBind4ZoneConf;
-sub createBind8ZoneConf;
+sub createBind9ZoneConf;
 sub localHostnameHack;
 
-# CHANGE this to suit your bind master
-my $servertype =	"bind8";
+# --- Main Logic ---
+my $contactName = "hostmaster.${domainName}";
+my $fileBuildLock = untaint_path("$dnshome/locks/dnsBuild.lock");
 
-my $cmp =		"cmp";
-my $mv =		"/bin/mv -f";
-my $contactName =	"hostmaster.${domainName}";
-my $fileBuildLock =     "$dnshome/locks/dnsBuild.lock";
-my $fileZoneConf;
-my $serialdate =	`date '+%Y%m%d'`;
+my $serialdate_tainted = `date '+%Y%m%d'`;
+my $serialdate;
+if ($serialdate_tainted =~ /^(\d{8})$/) {
+    $serialdate = $1;
+} else {
+    die "Got tainted data from date command: $serialdate_tainted";
+}
 my $serial;
 
-my @dnsArray;
-my @dnsReverseIP;
-my %seen;
-
-# Do some checks first. Don't even start the build process if lock file exists.
 if (-e $fileBuildLock) {
-	die "ERROR: DNS is currently rebuilding. If you are sure that this ",
-	    "is not the case,\n       then remove $fileBuildLock\n";
+    die "ERROR: DNS is currently rebuilding. If you are sure that this is not the case, then remove $fileBuildLock\n";
 }
 
-# Make sure that no one else can rebuild DNS at the same time
-open(LOCK,">$fileBuildLock") or die "Cannot create lock file $fileBuildLock\n";
-close(LOCK);
+open(my $lock_fh, '>', $fileBuildLock) or die "Cannot create lock file $fileBuildLock: $!";
+close($lock_fh);
 
-# Setup and/or get the serial no.
-open(SERIAL,"+<$fileSerial") or open(SERIAL,"+>$fileSerial") or 
-die "Cannot open file $fileSerial\n";
-chomp($serialdate);
-print SERIAL "${serialdate}00\n" if (-z $fileSerial);
-seek(SERIAL,0,0);	# The previous perl gymnastics is for the case that
-			# $fileSerial is empty.
-$serial = <SERIAL>;
-chomp($serial);
-if ($serial =~ /^$serialdate/) {
-	$serial++;
+# Atomically read and update the serial number
+open(my $serial_fh, '+<', $fileSerial) or open($serial_fh, '>', $fileSerial) or die "Cannot open or create $fileSerial: $!";
+flock($serial_fh, 2); # Exclusive lock
+my $serial_content = do { local $/; <$serial_fh> };
+my $is_empty = !defined $serial_content || $serial_content eq '';
+
+if ($is_empty) {
+    $serial = "${serialdate}00";
 } else {
-	$serial = $serialdate . "00";
+    if ($serial_content =~ /^(\d+)\s*$/) {
+        my $read_serial = $1;
+        if ($read_serial =~ /^$serialdate/) {
+            $serial = $read_serial + 1;
+        } else {
+            $serial = "${serialdate}00";
+        }
+    } else {
+        die "Invalid serial number format in $fileSerial: $serial_content";
+    }
 }
-seek(SERIAL,0,0);
-print SERIAL "$serial\n";
-close(SERIAL);
+seek($serial_fh, 0, 0);
+truncate($serial_fh, 0);
+print $serial_fh "$serial\n";
+close($serial_fh);
 
-# Read only the IP lines in from the file. Ignore everything else.
-open(DNS,"$fileHosts") or die "Cannot open $fileHosts\n";
-while (<DNS>) {
-	next if /^\D/;	# We are not interested in comments and blank lines
-	s/#.*//;
-	chomp($_);
-	push(@dnsArray,$_);
+# Read hosts file
+open(my $dns_fh, '<', $fileHosts) or die "Cannot open $fileHosts: $!";
+my @dnsArray = <$dns_fh>;
+close($dns_fh);
+
+# Create a unique list of reverse zones (e.g., "1.2.3")
+my %seen;
+my @dnsReverseIP = grep { !$seen{$_}++ } map {
+    my ($ip) = split(/\s+/, $_, 2);
+    $ip =~ /^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.[0-9]{1,3}$/ ? $1 : ()
+} @dnsArray;
+
+removeFiles();
+createLookup(\@dnsArray);
+
+# Append nameserver and MX info
+open(my $ns_fh, '<', $fileNameServers) or die "Cannot open $fileNameServers: $!";
+my $fwd_fh = get_fh($fileForZone);
+while (my $line = <$ns_fh>) {
+    print $fwd_fh $line;
 }
-close(DNS);
+close($ns_fh);
 
-# Create the reverse IP array
-for (@dnsArray) {
-	my $revIP;
-	
-	/^([0-9]*)\.([0-9]*)\.([0-9]*)\.[0-9]*/;
-	$revIP = $1 . "." . $2 . "." . $3;
-	push(@dnsReverseIP,$revIP) unless $seen{$revIP}++;
+# Close all managed filehandles before creating the zone config
+for my $fh (values %file_handles) {
+    close $fh;
 }
 
-removeFiles;	# Clear out all the old zone files from the previous build
-openFiles;	# Open all the required files for writing
-createLookup;
+createBindZoneConf(\@dnsReverseIP);
 
-# Append nameserver and MX info to the end of the db.domain file
-open(NS,"$fileNameServers") or die "Cannot open $fileNameServers\n";
-cacheout $fileForZone;
-while (<NS>) {
-	print $fileForZone $_;
-}
-close(NS);
-closeFiles;
+unlink($fileBuildLock) or die "Cannot remove file $fileBuildLock: $!";
 
-# Create the configuration filE for BIND.
-createBindZoneConf;
-
-# Unlock since we are all done.
-unlink($fileBuildLock) or die "Cannot remove file $fileBuildLock\n";
-
-## The End ##
+# --- Subroutines ---
 
 sub createLookup {
-	for (@dnsArray) {	
-		my $ip;
-		my $fullhostname;
-		my $hostname;
-		my $hostIP;
-		my $revIP;
-		my $fileRevIP;
-		my @fields;
+    my ($lines) = @_;
+    for my $line (@$lines) {
+        $line =~ s/#.*//;
+        chomp($line);
+        next if $line =~ /^\s*$/;
 
-		# Setup the various fields in preparation for writing.
-		(@fields) = split(/\s+/,$_); 	
-		$ip = shift(@fields);
-		$hostname = shift(@fields);
+        my @fields = split(/\s+/, $line);
+        my $ip_tainted = shift(@fields) || '';
+        my $hostname_tainted = shift(@fields) || '';
 
-		# Ignore if the $hostname field is empty 
-		next if (! defined($hostname));
+        my $ip;
+        if ($ip_tainted =~ /^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})$/) {
+            $ip = $1;
+        } else { next; }
 
-		# Hack. Hack. Hack. Ka-phooi.
-		$fullhostname = localHostnameHack($hostname);
+        my $hostname;
+        if ($hostname_tainted =~ /^([\w\-\.]+)$/) {
+            $hostname = $1;
+        } else { next; }
 
-		$ip =~ /^([0-9]*)\.([0-9]*)\.([0-9]*)\.([0-9]*)/;
-		$hostIP = $4;
-		$revIP = $1 . "." . $2 . "." . $3;
-		$fileRevIP = "$dnshome/master/$revIP";
+        my $fullhostname = localHostnameHack($hostname);
+        my ($o1, $o2, $o3, $o4) = split(/\./, $ip);
+        my $fileRevIP = untaint_path("$dnshome/master/$o1.$o2.$o3");
 
-		# Write the forward lookups and CNAMEs
-		cacheout $fileForZone;
-		printf $fileForZone "%-24sIN\tA\t$ip\n", $hostname;
-		if ($#fields >= 0) {
-			for (@fields) {
-				printf 	$fileForZone "%-24sIN\t\CNAME\t%s\n",
-					$_, $hostname;	
-			}
-		}
+        my $fwd_fh = get_fh($fileForZone);
+        printf $fwd_fh "%-24sIN\tA\t%s\n", $hostname, $ip;
 
-		# Write the reverse lookups.
-		cacheout $fileRevIP;
-		print $fileRevIP "$hostIP\tIN\tPTR\t$fullhostname\n";	
-	}
+        for my $alias_tainted (@fields) {
+            if ($alias_tainted =~ /^([\w\-\.]+)$/) {
+                printf $fwd_fh "%-24sIN\tCNAME\t%s\n", $1, $hostname;
+            }
+        }
+
+        my $rev_fh = get_fh($fileRevIP);
+        print $rev_fh "$o4\tIN\tPTR\t$fullhostname\n";
+    }
 }
 
 sub createBindZoneConf {
-	my $oldZoneConf;
-	my $zoneDate;
+    my ($reverse_zones) = @_;
+    my $zoneDate;
+    if ($date =~ /^([\w\.\-:]+)$/) {
+        $zoneDate = $1;
+    } else { die "Tainted date string: $date"; }
 
-	$date =~ /^(.*)$/;	# Cleanse the input
-	$zoneDate = $1;
+    my $fileZoneConf = untaint_path("$dnshome/etc/zones.bind");
+    my $oldZoneConf = untaint_path("$dnshome/etc/save/zones.bind.$zoneDate");
 
-	if ($servertype eq "bind4") {
-		$fileZoneConf = "$dnshome/etc/named.boot";
-		$oldZoneConf = "$dnshome/etc/save/named.boot.$zoneDate";
-	} elsif ($servertype eq "bind8") {
-		$fileZoneConf = "$dnshome/etc/zones.bind";
-		$oldZoneConf = "$dnshome/etc/save/zones.bind.$zoneDate";
-	}
+    if (-f $fileZoneConf) {
+        cp($fileZoneConf, $oldZoneConf) or die "Failed to copy $fileZoneConf: $!";
+    }
 
-	if (-f $fileZoneConf) {
-		cp($fileZoneConf,$oldZoneConf);
-		unlink($fileZoneConf);
-	}
+    open(my $zc_fh, '>', $fileZoneConf) or die "Cannot open $fileZoneConf for writing: $!";
+    createBind9ZoneConf($zc_fh, $reverse_zones);
+    close($zc_fh);
 
-	# Write to configuration file
-	open(ZC,">$fileZoneConf") or die "Cannot open $fileZoneConf\n";
-	if ($servertype eq "bind4") {
-		createBind4ZoneConf;
-	} elsif ($servertype eq "bind8") {
-		createBind8ZoneConf;
-	}
-	close(ZC);
-
-	if (-f $oldZoneConf) {
-		my $status; 
-
-		open(STATUS,"$cmp $fileZoneConf $oldZoneConf 2>&1 |") or
-		die "Cannot compare $fileZoneConf and $oldZoneConf\n";
-		$status = <STATUS>;
-		close(STATUS);
-
-		unlink($oldZoneConf) unless defined($status);
-	}
+    if (-f $oldZoneConf) {
+        open(my $status_fh, '-|', 'cmp', $fileZoneConf, $oldZoneConf) or die "Cannot compare files";
+        my $status = <$status_fh>;
+        close($status_fh);
+        unlink($oldZoneConf) unless defined($status);
+    }
 }
 
-sub createBind4ZoneConf {
-	my $ip;
-	my $revIP;
-	my $zone;
-	
-	print  ZC "\; master named.boot for domain $domainName\n",
-		  "directory\t$dnshome/master\n";
-	printf ZC "cache\t\t%-24s\t%-20s\n", ".", "db.cache";
-	printf ZC "primary\t\t%-24s\t%-20s\n", "0.0.127.in-addr.arpa", 
-		  "127.0.0";
-	printf ZC "primary\t\t%-24s\t%-20s\n", $domainName, $domainName;
-	printf ZC "primary\t\t%-24s\t%-20s\n", "10.in-addr.arpa", "db.10";
-
-	for (@dnsReverseIP) {
-		$ip = $_;
-		$ip =~ /^([0-9]*)\.([0-9]*)\.([0-9]*)/;
-		$revIP = $3 . "." . $2 . "." . $1;
-		$zone = $1 . "." . $2 . "." . $3;
-		printf ZC "primary\t\t%-24s\t%-20s\n", "$revIP.in-addr.arpa",
-			  "db.".$zone;
-	}
-}
-
-sub createBind8ZoneConf {
-	my $ip;
-	my $revIP;
-
-	print ZC "\# zone information for $domainName domain\n";
-	
-	for (@dnsReverseIP) {
-		$ip = $_;
-                $ip =~ /^([0-9]*)\.([0-9]*)\.([0-9]*)/;
-                $revIP = $3 . "." . $2 . "." . $1;
-		printf ZC "zone \"$revIP.in-addr.arpa\" {\n";
-		printf ZC "\ttype master;\n";
-		printf ZC "\tfile \"master/$ip\";\n";
-		printf ZC "\tcheck-names ignore;\n";
-		printf ZC "};\n\n";
-	}
+sub createBind9ZoneConf {
+    my ($zc_fh, $reverse_zones) = @_;
+    print $zc_fh "// zone information for $domainName domain\n";
+    for my $rev_ip_path (@$reverse_zones) {
+        my ($o1, $o2, $o3) = split(/\./, $rev_ip_path);
+        my $revIP = "$o3.$o2.$o1";
+        printf $zc_fh "zone \"%s.in-addr.arpa\" {\n", $revIP;
+        printf $zc_fh "\ttype master;\n";
+        printf $zc_fh "\tfile \"%s/master/%s\";\n", $dnshome, $rev_ip_path;
+        printf $zc_fh "};\n\n";
+    }
 }
 
 sub localHostnameHack {
-	my ($hostname) = @_;
-	my $fullhostname;
-
-	# This is to take care of any site specific hacks	
-	if ($hostname =~ /\.$/) {
-		$fullhostname = $hostname;
-	} else {
-		$fullhostname = "$hostname.$domainName.";
-	}
-
-	return $fullhostname;	
+    my ($hostname) = @_; # Assumed untainted
+    return ($hostname =~ /\.$/) ? $hostname : "$hostname.$domainName.";
 }
 
 sub removeFiles {
-	my @removefiles;
-	my $taintfile;
+    my $master_dir = untaint_path("$dnshome/master");
+    opendir(my $dh, $master_dir) or die "Cannot open directory $master_dir: $!";
+    my @files = readdir($dh);
+    closedir($dh);
 
-	# Use opendir and friends since a filehandle glob is now insecure
-	opendir(RFDIR,"$dnshome/master") 
-	or die "Cannot open directory $dnshome/master\n";
-	@removefiles = grep !/^\.\.?$/, readdir(RFDIR);
-	closedir(RFDIR);
-
-	# Remove all the old files as they are going to get rebuilt anyways
-	for $taintfile (@removefiles) {
-		my $cleanfile;
-
-		$taintfile =~ /^(.*)$/;	# All this untainting is a pain.
-		$cleanfile = $1;
-		unlink("$dnshome/master/$cleanfile");
-	}	
-}
-
-sub openFiles {
-	# By opening all the files at once, we can write everything in one pass.
-	# cacheout() is used as we do not know how many reverse db files are
-	# going to be created till runtime and this can easily exceed
-	# the number of file descriptors available to a process. 
-	# It also accounts for much of the speed of the build as it enables
-	# all the files to be built in one pass. 
-
-	# Open the forward lookup file
-	cacheout $fileForZone;		
-	printHeader($fileForZone);		
-		
-	# Open the reverse lookup files
-	for (@dnsReverseIP) {
-		my $fileRevIP;
-
-		$fileRevIP = "$dnshome/master/$_";
-		cacheout $fileRevIP;
-		printHeader($fileRevIP);		
-	}
-}
-
-sub closeFiles {
-	close($fileForZone);
-
-	for (@dnsReverseIP) {
-		my $fileRevIP;
-
-		$fileRevIP = "$dnshome/master/$_";
-		close($fileRevIP);
-	}
+    for my $file_tainted (@files) {
+        next if $file_tainted =~ /^\.\.?$/;
+        if ($file_tainted =~ /^([\w\.\-]+)$/) {
+            my $file = $1;
+            unlink("$master_dir/$file");
+        }
+    }
 }
 
 sub printHeader {
-	my ($filehandle) = @_;
-
-	print	$filehandle	"\@\tIN\tSOA\t$serverName\.$domainName." , 
-				" $contactName. (\n" ,
-				"\t\t$serial\t; Serial\n" ,
-				"\t\t10800\t\t; Refresh after 3 hours\n" ,
-				"\t\t3600\t\t; Retry after 1 hour\n" ,
-				"\t\t604800\t\t; Expire after 1 week\n" , 
-				"\t\t86400 )\t\t; Minimum TTL of 1 day\n" ,
-				"\tIN\tNS\t$serverName\.$domainName\.\n";
+    my ($fh) = @_;
+    my $serial_untainted = $serial; # Already validated
+    print $fh "\$TTL 86400\n";
+    print $fh "\@\tIN\tSOA\t$serverName.$domainName. $contactName. (\n";
+    print $fh "\t\t$serial_untainted\t; Serial\n";
+    print $fh "\t\t10800\t\t; Refresh after 3 hours\n";
+    print $fh "\t\t3600\t\t; Retry after 1 hour\n";
+    print $fh "\t\t604800\t\t; Expire after 1 week\n";
+    print $fh "\t\t86400 )\t\t; Minimum TTL of 1 day\n";
+    print $fh "\tIN\tNS\t$serverName.$domainName.\n";
 }
