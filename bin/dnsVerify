@@ -1,135 +1,108 @@
-#!/usr/bin/perl -Tw
-#
-# dnsVerify
-#
-# This verifies that the hosts file used by dennisBuild does not contain any
-# errors. At this time it does not take any corrective action, only warning
-# messages are issued.
-#
-# $Id: dnsVerify,v 1.5 1998/04/28 20:28:55 jauderho Exp jauderho $
-# (C) Copyright 1997,1998 Jauder Ho <jauderho@carumba.com>
-#
-#    This program is free software; you can redistribute it and/or modify it
-#    under the terms of the GNU General Public License as published by the Free
-#    Software Foundation; either version 2 of the License, or (at your option)
-#    any later version.
-#
-#    This program is distributed in the hope that it will be useful, but
-#    WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
-#    or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-#    for more details.
-#
-#    You should have received a copy of the GNU General Public License along
-#    with this program; if not, write to the Free Software Foundation, Inc., 59
-#    Temple Place, Suite 330, Boston, MA 02111-1307, USA
-#
-# 060297 jauderho [created]
-# 060397 jauderho [new parsing engine and large chunks rewritten]
-# 080497 jauderho [changed for usage in transmeta]
-#
+#!/usr/bin/env perl -T
 
+use strict;
+use warnings;
+
+# Untaint a path safely
+sub untaint_path {
+    my ($path) = @_;
+    if ($path =~ /^([-\/\w\.\_]+)$/) {
+        return $1;
+    }
+    die "Insecure path detected: $path";
+}
+
+# Load and untaint configuration
+our ($fileHosts);
 require "/var/named/etc/dennis.conf";
 
-# Declare my subroutines and variables
-sub checkIP;
-sub checkHosts;
+$ENV{PATH} = '/bin:/usr/bin'; # Set a safe execution path
+$fileHosts = untaint_path($fileHosts);
 
 my @dnsArray;
 my @outArray;
 
-# Read only the IP lines in from the file; ignore everything else
-open(DNS,"$fileHosts") or die "Cannot open $fileHosts\n";
-while (<DNS>) {
-	next if /^(#|\s$)/;
-        s/#.*$//;
-        chomp($_);
-        push(@dnsArray,$_);
-}
-close(DNS);
-
-checkIP;	# Check the IP addresses
-checkHosts;	# Check the host side of things
-
-# Print everything
-print join("\n", sort @outArray), "\n" if defined @outArray;
-
-# The End!
+# Read hosts file
+open(my $dns_fh, '<', $fileHosts) or die "Cannot open $fileHosts: $!";
+@dnsArray = <$dns_fh>;
+close($dns_fh);
 
 sub checkIP {
-	my %seenIP;
+    my ($lines) = @_;
+    my %seenIP;
+    for my $line (@$lines) {
+        chomp($line);
+        $line =~ s/#.*//;
+        next if $line =~ /^\s*$/;
 
-	for (@dnsArray) {
-		my $ip;
-		my @names;
+        my ($ip_tainted, @names_tainted) = split(/\s+/, $line);
+        next unless defined $ip_tainted;
 
-		($ip,@names) = split;
+        if ($ip_tainted !~ /^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})$/) {
+            warn "WARNING: bad format\t    $line\n";
+            next;
+        }
+        my $ip = $1;
 
-		# Check for duplicate IPs
-		$seenIP{$ip}++;	
-		
-		if ($seenIP{$ip} > 1) {
-			push(@outArray,"WARNING: dupe IP\t$ip");
-		}
+        my @octets = split(/\./, $ip);
+        if (grep { $_ > 255 } @octets) {
+            warn "WARNING: invalid IP\t    $ip\n";
+        }
 
-		# The line has to start with an IP address
-		if ($ip !~ /^(\d+)\.(\d+)\.(\d+)\.(\d+)/) {
-			warn "WARNING: bad format\t    $_\n";	
-			next;
-		}
-
-		# Check for valid IPs
-		if ($1 < 0 or $1 > 255
-		or  $2 < 0 or $2 > 255
-		or  $3 < 0 or $3 > 255
-		or  $4 < 0 or $4 > 255) {
-			warn "WARNING: invalid IP\t    $ip\n";
-		}
-	}
+        if ($seenIP{$ip}++) {
+            push @outArray, "WARNING: dupe IP\t$ip";
+        }
+    }
 }
 
 sub checkHosts {
-	my %dupHosts;
-	my %holderHosts;
-	my %printedHosts;
-	my %seenHosts;
+    my ($lines) = @_;
+    my %seenHosts;
+    my %holderHosts;
+    my %dupHosts;
 
-	for (@dnsArray) {
-		my $ip;
-		my @names;
+    for my $line (@$lines) {
+        chomp($line);
+        $line =~ s/#.*//;
+        next if $line =~ /^\s*$/;
 
-		($ip,@names) = split; 
+        my ($ip_tainted, @names_tainted) = split(/\s+/, $line);
+        next unless defined $ip_tainted && @names_tainted;
 
-		# Check that there IS a hostname
-		if (! defined($names[0])) {
-			push(@outArray,"WARNING: missing hostname   $ip");
-			next;
-		}
-		
-		for (@names) {
-			$seenHosts{$_}++;
-			$holderHosts{$_} = $ip unless defined($holderHosts{$_});
+        my $ip;
+        if ($ip_tainted =~ /^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})$/) {
+            $ip = $1;
+        } else {
+            next;
+        }
 
-			# Variable juggling to get multiple IPs for a given
-			# hostname
-			if ($seenHosts{$_} > 1) {
-				$dupHosts{$_} = "$holderHosts{$_} "
-				unless defined($dupHosts{$_});
+        for my $hostname_tainted (@names_tainted) {
+            if ($hostname_tainted !~ /^([\w\-\.]+)$/) {
+                # Optionally warn about invalid characters
+                next;
+            }
+            my $hostname = $1;
 
-				$dupHosts{$_} = $dupHosts{$_} . "$ip "
-				unless ($dupHosts{$_} =~ /$ip/);
-			}
-			
-			# Check for illegal chars in hostnames
-			#if (/(_|#)/) {
-			#	push(@outArray,"WARNING: bad hostname\t    $_")
-			#	unless $printedHosts{$_}++;
-			#} 
-		}
-	}
+            $seenHosts{$hostname}++;
+            $holderHosts{$hostname} //= $ip; # Store first IP seen
 
-	# Store it in @outArray
-	for (keys %dupHosts) {
-		push(@outArray,"WARNING: multiple IP\t" . pack("A16",$_) .
-		$dupHosts{$_}); 
-	}
+            if ($seenHosts{$hostname} > 1) {
+                $dupHosts{$hostname} //= "$holderHosts{$hostname} ";
+                $dupHosts{$hostname} .= "$ip " unless $dupHosts{$hostname} =~ /\Q$ip\E/;
+            }
+        }
+    }
+
+    for my $hostname (keys %dupHosts) {
+        push @outArray, "WARNING: multiple IP\t" . sprintf("%-16s", $hostname) . $dupHosts{$hostname};
+    }
+}
+
+
+checkIP(\@dnsArray);
+checkHosts(\@dnsArray);
+
+# Print everything
+if (@outArray) {
+    print join("\n", sort @outArray), "\n";
 }
