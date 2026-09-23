@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-## Copyright (c) 1996, 1997 by Internet Software Consortium
+## Copyright (c) 1996-2025 by Internet Software Consortium
 ##
 ## Permission to use, copy, modify, and distribute this software for any
 ## purpose with or without fee is hereby granted, provided that the above
@@ -15,7 +15,7 @@
 ## ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS
 ## SOFTWARE.
 
-## $Id: named-bootconf.pl,v 8.15 1997/06/09 17:46:52 halley Exp $
+##
 
 # This is a filter.  Input is a named.boot.  Output is a named.conf.
 
