@@ -1,140 +1,129 @@
-#!/usr/bin/perl -w
-#
-# createSecondary
-#
-# Create named.boot file for secondary DNS machines.
-# This is in BIND 4 format.
-# Configuration options can be found in ../etc/dennis.conf
-#
-# $Id: createSecondary,v 1.8 1998/04/28 20:27:58 jauderho Exp jauderho $
-# (C) Copyright 1997,1998 Jauder Ho <jauderho@carumba.com>
-#
-#    This program is free software; you can redistribute it and/or modify it
-#    under the terms of the GNU General Public License as published by the Free
-#    Software Foundation; either version 2 of the License, or (at your option)
-#    any later version.
-#
-#    This program is distributed in the hope that it will be useful, but
-#    WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
-#    or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-#    for more details.
-#
-#    You should have received a copy of the GNU General Public License along
-#    with this program; if not, write to the Free Software Foundation, Inc., 59
-#    Temple Place, Suite 330, Boston, MA 02111-1307, USA
-#
-# 051597 jauderho [created]
-# 052297 jauderho [mail named.boot to hostmaster if there are changes in zones]
-# 052997 jauderho [add proper file locking for the script]
-#
+#!/usr/bin/env perl -T
 
+use strict;
+use warnings;
+use File::Copy "cp";
+
+# Untaint a path safely
+sub untaint_path {
+    my ($path) = @_;
+    if ($path =~ /^([-\/\w\.\_]+)$/) {
+        return $1;
+    }
+    die "Insecure path detected: $path";
+}
+
+# Load and untaint configuration
+our ($date, $domainName, $dnshome, $serverIP, $mailer);
 require "/var/named/etc/dennis.conf";
 
-# Declare my subroutines and variables
+$ENV{PATH} = '/bin:/usr/bin'; # Set a safe execution path
+
+# Untaint config values
+if ($date =~ /^(.*)$/s) { $date = $1; } else { die "Tainted date: $date"; }
+if ($domainName =~ /^(.*)$/s) { $domainName = $1; } else { die "Tainted domainName: $domainName"; }
+if ($serverIP =~ /^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})$/) { $serverIP = $1; } else { die "Tainted serverIP: $serverIP"; }
+if ($mailer =~ /^([-\/\w\.\_]+)$/) { $mailer = $1; } else { die "Tainted mailer path: $mailer"; }
+$dnshome = untaint_path($dnshome);
+chomp($date);
+
+my $fileBuildLock = untaint_path("$dnshome/locks/createSecondary.lock");
+my $fileDNSBuildLock = untaint_path("$dnshome/locks/dnsBuild.lock");
+my $fileNamedConf = untaint_path("$dnshome/secondary/named.conf");
+my $contactName = "hostmaster\@$domainName";
+
+# --- Subroutine Declarations ---
 sub reverseZone;
 
-my $zone;
-my $status;
-my $cmp = "/bin/cmp";
-my $mv = "/bin/mv -f";
-my @zonefiles;
-
-chomp($date);   # Chomp!
-
-my $fileBuildLock	= "$dnshome/locks/createSecondary.lock";
-my $fileDNSBuildLock	= "$dnshome/locks/dnsBuild.lock";
-my $fileNamedBoot       = "$dnshome/secondary/named.boot";
-my $oldNamedBoot        = "$fileNamedBoot.secondary.$date";
-my $contactName 	= "hostmaster\@$domainName";
-my $mailer		= "/usr/lib/sendmail";
-
-# Do some checks first. 
+# --- Main Logic ---
 if (-e $fileDNSBuildLock) {
-	die "ERROR: DNS is currently rebuilding. Creating a named.boot now ",
-	    "would probably\n       result in an incomplete file. ",
-	    "If you are sure that this is not\n       ",
-	    "the case, then remove $fileDNSBuildLock\n";
+    die "ERROR: DNS is currently rebuilding. Cannot create named.conf now.\n";
 }
-
 if (-e $fileBuildLock) {
-	die "ERROR: createSecondary is currently rebuilding. If you are ",
-	    "sure that this is not\n       the case, then remove ",
-	    "$fileBuildLock\n";
+    die "ERROR: createSecondary is already running.\n";
 }
 
-# Make sure that no one else can create secondary named.boot at the same time
-open(LOCK,">$fileBuildLock") or die "Cannot create lock file $fileBuildLock\n";
-close(LOCK);
+open(my $lock_fh, '>', $fileBuildLock) or die "Cannot create lock file $fileBuildLock: $!";
+close($lock_fh);
 
-# Hack since File::Copy does not work.
-if (-f $fileNamedBoot) {
-#        `$mv $fileNamedBoot $oldNamedBoot`;
-}
-
-# Write to named.boot for secondary
-open(NB,">$fileNamedBoot") or die "Cannot open file $fileNamedBoot\n";
-print  NB "\; named.boot for domain $domainName - secondary server\n",
-	  "directory\t$dnshome\n";
-printf NB "cache\t\t%-24s\t%-20s\n", ".", "db.cache";
-printf NB "primary\t\t%-24s\t%-20s\n", "0.0.127.in-addr.arpa", "127.0.0";
-printf NB "secondary\t%-24s\t%s   %s\n", $domainName, $serverIP,
-	  $domainName;
-printf NB "secondary\t%-24s\t%s   %s\n", "10.in-addr.arpa", $serverIP, 
-	  "db.10";
-
-# Use opendir and friends since a filehandle glob is now insecure
-opendir(RFDIR,"$dnshome/master")
-or die "Cannot open directory $dnshome/master\n";
-@zonefiles = grep !/^\.\.?$/, readdir(RFDIR);
-closedir(RFDIR);
-
-# Create the rest of the file
-for $zone (@zonefiles) {
-	my $reversezone;
-
-	next if ($zone =~ /$domainName/ 
-	or $zone =~ /127.0.0/);
-	$reversezone = reverseZone($zone);
-	
-	printf NB "secondary\t%-24s\t%s   %s\n", "$reversezone.in-addr.arpa",
-		  $serverIP, "db.".$zone;	
-} 
-
-# Really ugly hack to get the results of the cmp
-open(STATUS,"$cmp $fileNamedBoot $oldNamedBoot 2>&1 |") or 
-die "Cannot compare $fileNamedBoot and $oldNamedBoot\n";
-$status = <STATUS>;
-close(STATUS);
-
-# Mail to $contactName if the file changes
-if ($status =~ /differ/) {
-	my $slurp;
-
-	open(MAIL,"|$mailer -t");
-	print MAIL "To: $contactName\n",
-		   "From: dnsBuild\@$domainName\n",
-		   "Subject: New named.boot for secondary named servers\n\n";
-	print MAIL "The named.boot has been updated. Please get the latest ",
-		   "file via the network\n\n";
-	close(MAIL);
-
-	print "Mailing new secondary DNS named.boot to $contactName\n";
+my $zoneDate;
+if ($date =~ /^([\w\.\-:]+)$/) {
+    $zoneDate = $1;
 } else {
-	unlink($oldNamedBoot);
+    die "Tainted date string for backup: $date";
+}
+my $oldNamedConf = untaint_path("$fileNamedConf.secondary.$zoneDate");
+
+if (-f $fileNamedConf) {
+    cp($fileNamedConf, $oldNamedConf) or die "Failed to copy $fileNamedConf to $oldNamedConf: $!";
 }
 
-close(NB);
+open(my $nb_fh, '>', $fileNamedConf) or die "Cannot open file $fileNamedConf for writing: $!";
+print $nb_fh "// named.conf for domain $domainName - secondary server\n\n";
 
-unlink($fileBuildLock) or die "Cannot remove file $fileBuildLock\n";
+# Forward zone
+printf $nb_fh "zone \"%s\" {\n", $domainName;
+print $nb_fh "\ttype slave;\n";
+printf $nb_fh "\tfile \"slaves/%s\";\n", $domainName;
+printf $nb_fh "\tmasters { %s; };\n", $serverIP;
+print $nb_fh "};\n\n";
 
-# The End!
+# Reverse zones
+my $master_dir = untaint_path("$dnshome/master");
+opendir(my $dh, $master_dir) or die "Cannot open directory $master_dir: $!";
+my @zonefiles = readdir($dh);
+closedir($dh);
 
+for my $zone_tainted (@zonefiles) {
+    next if $zone_tainted =~ /^\.\.?$/;
+    next if $zone_tainted =~ /\Q$domainName\E/ or $zone_tainted eq '127.0.0';
+
+    my $zone;
+    if ($zone_tainted =~ /^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})$/) {
+        $zone = $1;
+    } else {
+        next;
+    }
+
+    my $reversezone = reverseZone($zone);
+    printf $nb_fh "zone \"%s.in-addr.arpa\" {\n", $reversezone;
+    print $nb_fh "\ttype slave;\n";
+    printf $nb_fh "\tfile \"slaves/db.%s\";\n", $zone;
+    printf $nb_fh "\tmasters { %s; };\n", $serverIP;
+    print $nb_fh "};\n\n";
+}
+close($nb_fh);
+
+# Compare with backup and notify if changed
+my $files_differ = 0;
+if (-f $oldNamedConf) {
+    open(my $cmp_fh, '-|', 'cmp', $fileNamedConf, $oldNamedConf) or die "Cannot compare files";
+    my $status = <$cmp_fh>;
+    close($cmp_fh);
+    if (defined $status) {
+        $files_differ = 1;
+    } else {
+        unlink($oldNamedConf); # No differences, remove backup
+    }
+} else {
+    $files_differ = 1; # New file, so it has "changed"
+}
+
+if ($files_differ) {
+    open(my $mail_fh, '|-', $mailer, '-t') or die "Cannot open pipe to mailer: $!";
+    print $mail_fh "To: $contactName\n";
+    print $mail_fh "From: dnsBuild\@$domainName\n";
+    print $mail_fh "Subject: New named.conf for secondary named servers\n\n";
+    print $mail_fh "The named.conf has been updated. Please get the latest file via the network.\n";
+    close($mail_fh);
+    print "Mailing new secondary DNS named.conf to $contactName\n";
+}
+
+unlink($fileBuildLock) or die "Cannot remove file $fileBuildLock: $!";
+
+# --- Subroutines ---
 sub reverseZone {
-	my ($ip) = @_;
-	my $revip;
-	my @arrayip;
-
-	(@arrayip) = split(/\./,$ip);
-	$revip = join ".", reverse(@arrayip);
-	return $revip;
+    my ($ip) = @_; # Assumes untainted segment strings
+    my @arrayip = split(/\./, $ip);
+    return join ".", reverse(@arrayip);
 }
