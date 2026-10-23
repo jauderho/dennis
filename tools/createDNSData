@@ -5,8 +5,8 @@
 # Get a listing from doing a echo ls -d <domain> | nslookup | grep IN
 # This is mainly to help with porting purposes. YMMV.
 #
-# $Id: createDNSData,v 1.1 1998/09/04 21:03:04 jauderho Exp jauderho $
-# (C) Copyright 1998 Jauder Ho <jauderho@carumba.com>
+#
+# (C) Copyright 1998-2025 Jauder Ho <jauderho@carumba.com>
 #
 # 090398 jauderho [created]
 #
