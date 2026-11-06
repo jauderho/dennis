@@ -5,8 +5,8 @@
 # Automatically regenerate DNS data from $dnshome/etc/hosts.
 # This is a transition tool. YMMV.
 #
-# $Id: autoDennis,v 1.5 1998/09/04 21:02:17 jauderho Exp jauderho $
-# (C) Copyright 1998 Jauder Ho <jauderho@carumba.com>
+#
+# (C) Copyright 1998-2025 Jauder Ho <jauderho@carumba.com>
 #
 # 090398 jauderho [created]
 # 090498 jauderho [moved most of the original code to ypGenHosts.]
