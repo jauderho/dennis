@@ -6,8 +6,8 @@
 # To be mainly used as a transition tool. For example moving from a current
 # DNS system to a dennis based version.
 #
-# $Id: dnsGenHosts,v 1.2 1998/09/04 21:04:53 jauderho Exp jauderho $
-# (C) Copyright 1998 Jauder Ho <jauderho@carumba.com>
+#
+# (C) Copyright 1998-2025 Jauder Ho <jauderho@carumba.com>
 #
 # 090398 jauderho [created]
 # 090498 jauderho [groks A, CNAME and TXT records correctly]

@@ -1,13 +1,11 @@
-#!/bin/sh
+#!/usr/bin/env perl -T
 #
 # dennis
 #
-# The shell interface to editing and rebuilding DNS. Maybe this could be a 
-# perl script instead.
+# The Perl interface to editing and rebuilding DNS.
 # Configuration options can be found in etc/dennis.conf
 #
-# $Id: dennis,v 1.2 1998/04/25 09:09:13 jauderho Exp jauderho $
-# (C) Copyright 1997,1998 Jauder Ho <jauderho@carumba.com>
+# (C) Copyright 1997-2025 Jauder Ho <jauderho@carumba.com>
 #
 #    This program is free software; you can redistribute it and/or modify it
 #    under the terms of the GNU General Public License as published by the Free
@@ -23,49 +21,46 @@
 #    with this program; if not, write to the Free Software Foundation, Inc., 59
 #    Temple Place, Suite 330, Boston, MA 02111-1307, USA
 #
-# 052897 jauderho [created]
-# 042498 jauderho [updated and cleaned up for initial release]
-#
 
-export PATH=/bin:/usr/bin:/usr/sbin:/usr/local/bin:/var/named/bin
+use strict;
+use warnings;
 
-dnshome=/var/named
-fileBuildLock=$dnshome/locks/editDNS.lock
-fileHosts=$dnshome/etc/hosts
+$ENV{PATH} = '/bin:/usr/bin:/usr/sbin:/usr/local/bin:/var/named/bin';
 
-if [ -f $fileBuildLock ]; then
-	echo "ERROR: DNS is currently being edited. If you are sure that "
-	echo "       this is not the case, then remove $fileBuildLock"
-	exit
-fi
+my $dnshome       = '/var/named';
+my $fileBuildLock = "$dnshome/locks/editDNS.lock";
+my $fileHosts     = "$dnshome/etc/hosts";
 
-touch $fileBuildLock 
+if ( -f $fileBuildLock ) {
+    die "ERROR: DNS is currently being edited. If you are sure that this is not the case, then remove $fileBuildLock\n";
+}
 
-# Check out, edit, build and check in
-co -l $fileHosts
-vi $fileHosts
+# Create the lock file
+open( my $lock_fh, '>', $fileBuildLock ) or die "Cannot create lock file $fileBuildLock: $!";
+close($lock_fh);
 
-clear
+# Edit the hosts file
+system('vi', $fileHosts) == 0 or die "Editor 'vi' failed: $?";
 
-echo "Verifying host table syntax..."
-dnsVerify
-echo
+system('clear');
 
-echo -n "Do you want to rebuild the dns tables [y/N]? "
-read answer
+print "Verifying host table syntax...\n";
+system('dnsVerify') == 0 or warn "dnsVerify failed: $?";
+print "\n";
 
-case $answer in
-        [Yy]*)
-		clear 
+print "Do you want to rebuild the dns tables [y/N]? ";
+my $answer = <STDIN>;
+chomp($answer);
 
-             	echo "Building DNS now..."
-             	dennisBuild
-		createSecondary   
-                ;;
-esac
+if ( $answer =~ /^[Yy]/ ) {
+    system('clear');
+    print "Building DNS now...\n";
+    system('dennisBuild') == 0     or warn "dennisBuild failed: $?";
+    system('createSecondary') == 0 or warn "createSecondary failed: $?";
+}
 
-ci -u $fileHosts
+# Remove the lock file
+unlink($fileBuildLock) or die "Cannot remove lock file $fileBuildLock: $!";
 
-rm $fileBuildLock 
-echo
-exit
+print "\n";
+exit 0;
